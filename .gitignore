@@ -1,6 +1,4 @@
 node_modules
-dist
-build
 keycloak-auth-core
 deploy
 package-lock.json
