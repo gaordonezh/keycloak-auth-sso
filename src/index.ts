@@ -59,14 +59,14 @@ export function ssoAuthenticate(config: KeycloakConfig): RequestHandler {
   };
 
   return (req: Request, res: Response, next: NextFunction) => {
-    const authHeader = String(req.headers.authorization);
-    const [scheme, token] = authHeader.split(" ");
-    if (scheme !== "Bearer" || !token) {
-      return res.status(401).json({ error: "INVALID_AUTH_HEADER" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ error: "TOKEN WASN'T PROVIDED" });
     }
 
-    if (!authHeader) {
-      return res.status(401).json({ error: "INVALID_TOKEN." });
+    const [scheme, token] = authHeader.split(" ");
+    if (scheme !== "Bearer" || !token) {
+      return res.status(401).json({ error: "INVALID AUTH HEADER" });
     }
 
     jwt.verify(
@@ -79,7 +79,7 @@ export function ssoAuthenticate(config: KeycloakConfig): RequestHandler {
       },
       (err, decoded: any) => {
         if (err) {
-          return res.status(401).json({ error: "INVALID_TOKEN" });
+          return res.status(401).json({ error: "INVALID TOKEN" });
         }
 
         if (decoded?.azp !== config.frontendClientId) {

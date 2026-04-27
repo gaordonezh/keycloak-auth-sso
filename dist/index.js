@@ -24,13 +24,13 @@ function ssoAuthenticate(config) {
         });
     };
     return (req, res, next) => {
-        const authHeader = String(req.headers.authorization);
+        const authHeader = req.headers.authorization;
+        if (!authHeader) {
+            return res.status(401).json({ error: "TOKEN WASN'T PROVIDED" });
+        }
         const [scheme, token] = authHeader.split(" ");
         if (scheme !== "Bearer" || !token) {
-            return res.status(401).json({ error: "INVALID_AUTH_HEADER" });
-        }
-        if (!authHeader) {
-            return res.status(401).json({ error: "INVALID_TOKEN." });
+            return res.status(401).json({ error: "INVALID AUTH HEADER" });
         }
         jsonwebtoken_1.default.verify(token, getKey, {
             issuer: config.issuer,
@@ -39,7 +39,7 @@ function ssoAuthenticate(config) {
         }, (err, decoded) => {
             var _a, _b, _c;
             if (err) {
-                return res.status(401).json({ error: "INVALID_TOKEN" });
+                return res.status(401).json({ error: "INVALID TOKEN" });
             }
             if ((decoded === null || decoded === void 0 ? void 0 : decoded.azp) !== config.frontendClientId) {
                 return res.status(403).json({ error: "FORBIDDEN" });
