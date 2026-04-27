@@ -2,6 +2,35 @@ import { Request, Response, NextFunction, RequestHandler } from "express";
 import jwt, { JwtHeader } from "jsonwebtoken";
 import jwksClient from "jwks-rsa";
 
+declare global {
+  namespace Express {
+    interface Request {
+      ssouser?: {
+        iss: string;
+        aud: Array<string>;
+        /**
+         * Keycloak user id
+         */
+        sub: string;
+        "allowed-origins": Array<string>;
+        realm_access: {
+          roles: Array<string>;
+        };
+        resource_access: Record<string, { roles: Array<string> }>;
+        email_verified: boolean;
+        name: string;
+        /**
+         * Keycloak username
+         */
+        preferred_username: string;
+        given_name: string;
+        family_name: string;
+        email: string;
+      };
+    }
+  }
+}
+
 export interface KeycloakConfig {
   jwksUri: string;
   issuer: string;
@@ -65,7 +94,7 @@ export function ssoAuthenticate(config: KeycloakConfig): RequestHandler {
           return res.status(403).json({ error: "FORBIDDEN." });
         }
 
-        (req as any).ssouser = decoded;
+        req.ssouser = decoded;
         next();
       },
     );
