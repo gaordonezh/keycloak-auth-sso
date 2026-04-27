@@ -65,7 +65,7 @@ export function ssoAuthenticate(config: KeycloakConfig): RequestHandler {
           return res.status(403).json({ error: "FORBIDDEN." });
         }
 
-        (req as any).user = decoded;
+        (req as any).ssouser = decoded;
         next();
       },
     );

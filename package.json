@@ -1,6 +1,6 @@
 {
-  "name": "sso-keycloak-lib",
-  "version": "1.0.0",
+  "name": "keycloak-auth-sso",
+  "version": "1.0.1",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "commonjs",
@@ -10,18 +10,20 @@
     "url": "https://github.com/gaordonezh"
   },
   "scripts": {
-    "dev": "node demo/app.js",
+    "dev": "nodemon demo/app.js",
     "build": "tsc"
   },
   "dependencies": {
+    "cors": "^2.8.6",
     "jsonwebtoken": "^9.0.0",
     "jwks-rsa": "^3.0.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.0",
     "@types/jsonwebtoken": "^9.0.0",
-    "typescript": "^5.0.0",
-    "express": "^4.0.0"
+    "express": "^4.0.0",
+    "nodemon": "^3.1.14",
+    "typescript": "^5.0.0"
   },
   "repository": {
     "type": "git",

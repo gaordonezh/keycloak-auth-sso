@@ -48,7 +48,7 @@ function ssoAuthenticate(config) {
             if (!hasPermission) {
                 return res.status(403).json({ error: "FORBIDDEN." });
             }
-            req.user = decoded;
+            req.ssouser = decoded;
             next();
         });
     };
