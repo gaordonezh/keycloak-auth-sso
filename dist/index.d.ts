@@ -29,11 +29,30 @@ declare global {
         }
     }
 }
-export interface KeycloakConfig {
+export interface KeycloakConfigProps {
     jwksUri: string;
     issuer: string;
     clientId: string;
     frontendClientId: string;
     frontendAccessName: string;
 }
-export declare function ssoAuthenticate(config: KeycloakConfig): RequestHandler;
+export interface KeycloakUserPayloadCreateProps {
+    username: string;
+    name: string;
+    lastName: string;
+    email: string;
+    isActive?: boolean;
+}
+export interface KeycloakUserPayloadUpdateProps extends Omit<KeycloakUserPayloadCreateProps, "username"> {
+    id: string;
+}
+export declare function ssoAuthenticateMiddleware(config: KeycloakConfigProps): RequestHandler;
+export declare const isValidEmail: (val: any) => boolean;
+export declare const getKeycloakToken: (adminUrl: string, realm: string, grantType: string, clientId: string, clientSecret: string) => Promise<{
+    headers: {
+        Authorization: string;
+    };
+}>;
+export declare const getKeycloakUsers: (adminUrl: string, realm: string, config: Record<string, any>, params?: Record<string, string>) => Promise<Array<Record<string, any>>>;
+export declare const handleCreateKeycloakUser: (adminUrl: string, realm: string, body: KeycloakUserPayloadCreateProps, config: Record<string, any>) => Promise<void>;
+export declare const handleUpdateKeycloakUser: (adminUrl: string, realm: string, body: KeycloakUserPayloadUpdateProps, config: Record<string, any>) => Promise<void>;
