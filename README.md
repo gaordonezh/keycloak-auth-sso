@@ -14,4 +14,14 @@ Colocar el nombre y la libreria apuntando al repositorio y al tag que se quiere 
 
 Expone:
 
-- Middleware ssoAuthenticate con los parámetros de validación
+- ssoAuthenticateMiddleware: Middleware con los parámetros de validación.
+- isValidEmail: Función para validar emails.
+- getKeycloakToken: Obtener el token de keycloak.
+- getKeycloakUsers: Obtener la lista de usuarios de keycloak.
+- handleCreateKeycloakUser: Crear un usuario en keycloak.
+- handleUpdateKeycloakUser: Actualizar un usuario en keycloak.
+- types:
+  - KeycloakUserPayloadCreateProps
+  - KeycloakUserPayloadUpdateProps
+  - KeycloakConfigProps
+  - Express > Request > ssouser

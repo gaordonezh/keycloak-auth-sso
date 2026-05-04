@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction, RequestHandler } from "express";
 import jwt, { JwtHeader } from "jsonwebtoken";
 import jwksClient from "jwks-rsa";
+import axios from "axios";
 
 declare global {
   namespace Express {
@@ -31,7 +32,7 @@ declare global {
   }
 }
 
-export interface KeycloakConfig {
+export interface KeycloakConfigProps {
   jwksUri: string;
   issuer: string;
   clientId: string;
@@ -39,7 +40,24 @@ export interface KeycloakConfig {
   frontendAccessName: string;
 }
 
-export function ssoAuthenticate(config: KeycloakConfig): RequestHandler {
+export interface KeycloakUserPayloadCreateProps {
+  username: string;
+  name: string;
+  lastName: string;
+  email: string;
+  isActive?: boolean;
+}
+
+export interface KeycloakUserPayloadUpdateProps extends Omit<
+  KeycloakUserPayloadCreateProps,
+  "username"
+> {
+  id: string;
+}
+
+export function ssoAuthenticateMiddleware(
+  config: KeycloakConfigProps,
+): RequestHandler {
   const client = jwksClient({
     jwksUri: config.jwksUri,
     cache: true,
@@ -100,3 +118,107 @@ export function ssoAuthenticate(config: KeycloakConfig): RequestHandler {
     );
   };
 }
+
+export const isValidEmail = (val: any) => {
+  if (typeof val !== "string") return false;
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  return emailRegex.test(val);
+};
+
+export const getKeycloakToken = async (
+  adminUrl: string,
+  realm: string,
+  grantType: string,
+  clientId: string,
+  clientSecret: string,
+) => {
+  const params = new URLSearchParams();
+  params.append("grant_type", grantType);
+  params.append("client_id", clientId);
+  params.append("client_secret", clientSecret);
+
+  const { data: resToken } = await axios.post(
+    `${adminUrl}/realms/${realm}/protocol/openid-connect/token`,
+    params,
+    {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    },
+  );
+
+  return {
+    headers: {
+      Authorization: `Bearer ${resToken.access_token}`,
+    },
+  };
+};
+
+export const getKeycloakUsers = async (
+  adminUrl: string,
+  realm: string,
+  config: Record<string, any>,
+  params?: Record<string, string>,
+): Promise<Array<Record<string, any>>> => {
+  const res = await axios.get(`${adminUrl}/admin/realms/${realm}/users`, {
+    ...config,
+    params,
+  });
+  // first: 0, max: 10000
+  return res.data;
+};
+
+export const handleCreateKeycloakUser = async (
+  adminUrl: string,
+  realm: string,
+  body: KeycloakUserPayloadCreateProps,
+  config: Record<string, any>,
+) => {
+  const obj = {
+    requiredActions: ["UPDATE_PASSWORD"],
+    emailVerified: true,
+    username: body.username,
+    firstName: body.name || "-",
+    lastName: body.lastName || "-",
+    email: isValidEmail(body.email)
+      ? body.email.trim()
+      : `${body.email || "temp"}_mail@mail.com`,
+    groups: [],
+    attributes: {},
+    enabled: false,
+    credentials: [
+      {
+        temporary: true,
+        type: "password",
+        value: body.username,
+      },
+    ],
+  };
+
+  console.log("create:", obj);
+
+  await axios.post(`${adminUrl}/admin/realms/${realm}/users/`, obj, config);
+};
+
+export const handleUpdateKeycloakUser = async (
+  adminUrl: string,
+  realm: string,
+  body: KeycloakUserPayloadUpdateProps,
+  config: Record<string, any>,
+) => {
+  const obj = {
+    id: body.id,
+    firstName: body.name,
+    lastName: body.lastName,
+    email: body.email,
+    enabled: body.isActive,
+  };
+
+  console.log("update:", obj);
+
+  await axios.put(
+    `${adminUrl}/admin/realms/${realm}/users/${body.id}`,
+    obj,
+    config,
+  );
+};
