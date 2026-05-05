@@ -48,12 +48,7 @@ export interface KeycloakUserPayloadCreateProps {
   isActive?: boolean;
 }
 
-export interface KeycloakUserPayloadUpdateProps extends Omit<
-  KeycloakUserPayloadCreateProps,
-  "username"
-> {
-  id: string;
-}
+export interface KeycloakUserPayloadUpdateProps extends KeycloakUserPayloadCreateProps {}
 
 export function ssoAuthenticateMiddleware(
   config: KeycloakConfigProps,
@@ -119,19 +114,19 @@ export function ssoAuthenticateMiddleware(
   };
 }
 
-export const isValidEmail = (val: any) => {
+export function isValidEmail(val: any) {
   if (typeof val !== "string") return false;
   const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
   return emailRegex.test(val);
-};
+}
 
-export const getKeycloakToken = async (
+export async function getKeycloakToken(
   adminUrl: string,
   realm: string,
   grantType: string,
   clientId: string,
   clientSecret: string,
-) => {
+) {
   const params = new URLSearchParams();
   params.append("grant_type", grantType);
   params.append("client_id", clientId);
@@ -152,9 +147,9 @@ export const getKeycloakToken = async (
       Authorization: `Bearer ${resToken.access_token}`,
     },
   };
-};
+}
 
-export const getKeycloakUsers = async (
+const getKeycloakUsers = async (
   adminUrl: string,
   realm: string,
   config: Record<string, any>,
@@ -180,13 +175,37 @@ const validateUserPayload = (
   if (!isValid) throw new Error("SOME FIELD IS WRONG");
 };
 
-export const handleCreateKeycloakUser = async (
+export async function handleCreateKeycloakUser(
+  body: KeycloakUserPayloadCreateProps,
   adminUrl: string,
   realm: string,
-  body: KeycloakUserPayloadCreateProps,
-  config: Record<string, any>,
-) => {
+  grantType: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<string> {
   validateUserPayload(body, true);
+
+  const keycloakConfig = await getKeycloakToken(
+    adminUrl,
+    realm,
+    grantType,
+    clientId,
+    clientSecret,
+  );
+
+  const finUsername = await getKeycloakUsers(adminUrl, realm, keycloakConfig, {
+    username: body.username,
+  });
+  if (finUsername.length) {
+    throw new Error(`username:${body.username} ya se encuentra registrado`);
+  }
+
+  const userByEmail = await getKeycloakUsers(adminUrl, realm, keycloakConfig, {
+    email: body.username,
+  });
+  if (userByEmail.length) {
+    throw new Error(`email:${body.email} ya se encuentra registrado`);
+  }
 
   const obj = {
     requiredActions: ["UPDATE_PASSWORD"],
@@ -209,32 +228,72 @@ export const handleCreateKeycloakUser = async (
     ],
   };
 
-  console.log("create:", obj);
+  console.log("kc create:", obj);
 
-  await axios.post(`${adminUrl}/admin/realms/${realm}/users/`, obj, config);
-};
+  await axios.post(
+    `${adminUrl}/admin/realms/${realm}/users/`,
+    obj,
+    keycloakConfig,
+  );
 
-export const handleUpdateKeycloakUser = async (
+  const userByUsername = await getKeycloakUsers(
+    adminUrl,
+    realm,
+    keycloakConfig,
+    { username: body.username },
+  );
+  if (!userByUsername.length) {
+    throw new Error(
+      `No se encontró el username:${body.username} creado en keycloak.`,
+    );
+  }
+
+  const ssoid = userByUsername[0].id;
+  if (!ssoid) throw new Error("No se encontró el id creado");
+
+  return ssoid;
+}
+
+export async function handleUpdateKeycloakUser(
+  body: KeycloakUserPayloadUpdateProps,
   adminUrl: string,
   realm: string,
-  body: KeycloakUserPayloadUpdateProps,
-  config: Record<string, any>,
-) => {
+  grantType: string,
+  clientId: string,
+  clientSecret: string,
+) {
   validateUserPayload(body, false);
 
+  const keycloakConfig = await getKeycloakToken(
+    adminUrl,
+    realm,
+    grantType,
+    clientId,
+    clientSecret,
+  );
+  const userByUsername = await getKeycloakUsers(
+    adminUrl,
+    realm,
+    keycloakConfig,
+    { username: body.username },
+  );
+  if (!userByUsername.length) {
+    throw new Error(`No se encontró el username:${body.username} en keycloak.`);
+  }
+
   const obj = {
-    id: body.id,
+    id: userByUsername[0].id,
     firstName: body.name,
     lastName: body.lastName,
     email: body.email,
     enabled: body.isActive,
   };
 
-  console.log("update:", obj);
+  console.log("kc update:", obj);
 
   await axios.put(
-    `${adminUrl}/admin/realms/${realm}/users/${body.id}`,
+    `${adminUrl}/admin/realms/${realm}/users/${obj.id}`,
     obj,
-    config,
+    keycloakConfig,
   );
-};
+}
