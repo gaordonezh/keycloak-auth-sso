@@ -88,7 +88,18 @@ const getKeycloakUsers = async (adminUrl, realm, config, params) => {
     return res.data;
 };
 exports.getKeycloakUsers = getKeycloakUsers;
+const validateUserPayload = (record, isCreate) => {
+    const arr = [record.name, record.lastName, (0, exports.isValidEmail)(record.email)];
+    if (isCreate)
+        arr.push(record.username);
+    else
+        arr.push(record.id);
+    const isValid = arr.every(Boolean);
+    if (!isValid)
+        throw new Error("SOME FIELD IS WRONG");
+};
 const handleCreateKeycloakUser = async (adminUrl, realm, body, config) => {
+    validateUserPayload(body, true);
     const obj = {
         requiredActions: ["UPDATE_PASSWORD"],
         emailVerified: true,
@@ -114,6 +125,7 @@ const handleCreateKeycloakUser = async (adminUrl, realm, body, config) => {
 };
 exports.handleCreateKeycloakUser = handleCreateKeycloakUser;
 const handleUpdateKeycloakUser = async (adminUrl, realm, body, config) => {
+    validateUserPayload(body, false);
     const obj = {
         id: body.id,
         firstName: body.name,
