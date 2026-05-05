@@ -88,18 +88,19 @@ const getKeycloakUsers = async (adminUrl, realm, config, params) => {
     // first: 0, max: 10000
     return res.data;
 };
-const validateUserPayload = (record, isCreate) => {
-    const arr = [record.name, record.lastName, isValidEmail(record.email)];
-    if (isCreate)
-        arr.push(record.username);
-    else
-        arr.push(record.id);
+const validateUserPayload = (record) => {
+    const arr = [
+        record.username,
+        record.name,
+        record.lastName,
+        isValidEmail(record.email),
+    ];
     const isValid = arr.every(Boolean);
     if (!isValid)
         throw new Error("SOME FIELD IS WRONG");
 };
 async function handleCreateKeycloakUser(body, adminUrl, realm, grantType, clientId, clientSecret) {
-    validateUserPayload(body, true);
+    validateUserPayload(body);
     const keycloakConfig = await getKeycloakToken(adminUrl, realm, grantType, clientId, clientSecret);
     const finUsername = await getKeycloakUsers(adminUrl, realm, keycloakConfig, {
         username: body.username,
@@ -145,14 +146,18 @@ async function handleCreateKeycloakUser(body, adminUrl, realm, grantType, client
     return ssoid;
 }
 async function handleUpdateKeycloakUser(body, adminUrl, realm, grantType, clientId, clientSecret) {
-    validateUserPayload(body, false);
+    var _a;
+    validateUserPayload(body);
     const keycloakConfig = await getKeycloakToken(adminUrl, realm, grantType, clientId, clientSecret);
     const userByUsername = await getKeycloakUsers(adminUrl, realm, keycloakConfig, { username: body.username });
     if (!userByUsername.length) {
         throw new Error(`No se encontró el username:${body.username} en keycloak.`);
     }
+    const ssoid = (_a = userByUsername[0]) === null || _a === void 0 ? void 0 : _a.id;
+    if (!ssoid)
+        throw new Error(`No se encontró el id del usuario`);
     const obj = {
-        id: userByUsername[0].id,
+        id: ssoid,
         firstName: body.name,
         lastName: body.lastName,
         email: body.email,
