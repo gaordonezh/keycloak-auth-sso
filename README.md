@@ -17,7 +17,6 @@ Expone:
 - ssoAuthenticateMiddleware: Middleware con los parámetros de validación.
 - isValidEmail: Función para validar emails.
 - getKeycloakToken: Obtener el token de keycloak.
-- getKeycloakUsers: Obtener la lista de usuarios de keycloak.
 - handleCreateKeycloakUser: Crear un usuario en keycloak.
 - handleUpdateKeycloakUser: Actualizar un usuario en keycloak.
 - types:

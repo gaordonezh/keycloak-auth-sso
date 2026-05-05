@@ -3,8 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.handleUpdateKeycloakUser = exports.handleCreateKeycloakUser = exports.getKeycloakUsers = exports.getKeycloakToken = exports.isValidEmail = void 0;
 exports.ssoAuthenticateMiddleware = ssoAuthenticateMiddleware;
+exports.isValidEmail = isValidEmail;
+exports.getKeycloakToken = getKeycloakToken;
+exports.handleCreateKeycloakUser = handleCreateKeycloakUser;
+exports.handleUpdateKeycloakUser = handleUpdateKeycloakUser;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const jwks_rsa_1 = __importDefault(require("jwks-rsa"));
 const axios_1 = __importDefault(require("axios"));
@@ -55,14 +58,13 @@ function ssoAuthenticateMiddleware(config) {
         });
     };
 }
-const isValidEmail = (val) => {
+function isValidEmail(val) {
     if (typeof val !== "string")
         return false;
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     return emailRegex.test(val);
-};
-exports.isValidEmail = isValidEmail;
-const getKeycloakToken = async (adminUrl, realm, grantType, clientId, clientSecret) => {
+}
+async function getKeycloakToken(adminUrl, realm, grantType, clientId, clientSecret) {
     const params = new URLSearchParams();
     params.append("grant_type", grantType);
     params.append("client_id", clientId);
@@ -77,8 +79,7 @@ const getKeycloakToken = async (adminUrl, realm, grantType, clientId, clientSecr
             Authorization: `Bearer ${resToken.access_token}`,
         },
     };
-};
-exports.getKeycloakToken = getKeycloakToken;
+}
 const getKeycloakUsers = async (adminUrl, realm, config, params) => {
     const res = await axios_1.default.get(`${adminUrl}/admin/realms/${realm}/users`, {
         ...config,
@@ -87,9 +88,8 @@ const getKeycloakUsers = async (adminUrl, realm, config, params) => {
     // first: 0, max: 10000
     return res.data;
 };
-exports.getKeycloakUsers = getKeycloakUsers;
 const validateUserPayload = (record, isCreate) => {
-    const arr = [record.name, record.lastName, (0, exports.isValidEmail)(record.email)];
+    const arr = [record.name, record.lastName, isValidEmail(record.email)];
     if (isCreate)
         arr.push(record.username);
     else
@@ -98,15 +98,28 @@ const validateUserPayload = (record, isCreate) => {
     if (!isValid)
         throw new Error("SOME FIELD IS WRONG");
 };
-const handleCreateKeycloakUser = async (adminUrl, realm, body, config) => {
+async function handleCreateKeycloakUser(body, adminUrl, realm, grantType, clientId, clientSecret) {
     validateUserPayload(body, true);
+    const keycloakConfig = await getKeycloakToken(adminUrl, realm, grantType, clientId, clientSecret);
+    const finUsername = await getKeycloakUsers(adminUrl, realm, keycloakConfig, {
+        username: body.username,
+    });
+    if (finUsername.length) {
+        throw new Error(`username:${body.username} ya se encuentra registrado`);
+    }
+    const userByEmail = await getKeycloakUsers(adminUrl, realm, keycloakConfig, {
+        email: body.username,
+    });
+    if (userByEmail.length) {
+        throw new Error(`email:${body.email} ya se encuentra registrado`);
+    }
     const obj = {
         requiredActions: ["UPDATE_PASSWORD"],
         emailVerified: true,
         username: body.username,
         firstName: body.name || "-",
         lastName: body.lastName || "-",
-        email: (0, exports.isValidEmail)(body.email)
+        email: isValidEmail(body.email)
             ? body.email.trim()
             : `${body.email || "temp"}_mail@mail.com`,
         groups: [],
@@ -120,20 +133,31 @@ const handleCreateKeycloakUser = async (adminUrl, realm, body, config) => {
             },
         ],
     };
-    console.log("create:", obj);
-    await axios_1.default.post(`${adminUrl}/admin/realms/${realm}/users/`, obj, config);
-};
-exports.handleCreateKeycloakUser = handleCreateKeycloakUser;
-const handleUpdateKeycloakUser = async (adminUrl, realm, body, config) => {
+    console.log("kc create:", obj);
+    await axios_1.default.post(`${adminUrl}/admin/realms/${realm}/users/`, obj, keycloakConfig);
+    const userByUsername = await getKeycloakUsers(adminUrl, realm, keycloakConfig, { username: body.username });
+    if (!userByUsername.length) {
+        throw new Error(`No se encontró el username:${body.username} creado en keycloak.`);
+    }
+    const ssoid = userByUsername[0].id;
+    if (!ssoid)
+        throw new Error("No se encontró el id creado");
+    return ssoid;
+}
+async function handleUpdateKeycloakUser(body, adminUrl, realm, grantType, clientId, clientSecret) {
     validateUserPayload(body, false);
+    const keycloakConfig = await getKeycloakToken(adminUrl, realm, grantType, clientId, clientSecret);
+    const userByUsername = await getKeycloakUsers(adminUrl, realm, keycloakConfig, { username: body.username });
+    if (!userByUsername.length) {
+        throw new Error(`No se encontró el username:${body.username} en keycloak.`);
+    }
     const obj = {
-        id: body.id,
+        id: userByUsername[0].id,
         firstName: body.name,
         lastName: body.lastName,
         email: body.email,
         enabled: body.isActive,
     };
-    console.log("update:", obj);
-    await axios_1.default.put(`${adminUrl}/admin/realms/${realm}/users/${body.id}`, obj, config);
-};
-exports.handleUpdateKeycloakUser = handleUpdateKeycloakUser;
+    console.log("kc update:", obj);
+    await axios_1.default.put(`${adminUrl}/admin/realms/${realm}/users/${obj.id}`, obj, keycloakConfig);
+}

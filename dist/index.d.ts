@@ -43,16 +43,14 @@ export interface KeycloakUserPayloadCreateProps {
     email: string;
     isActive?: boolean;
 }
-export interface KeycloakUserPayloadUpdateProps extends Omit<KeycloakUserPayloadCreateProps, "username"> {
-    id: string;
+export interface KeycloakUserPayloadUpdateProps extends KeycloakUserPayloadCreateProps {
 }
 export declare function ssoAuthenticateMiddleware(config: KeycloakConfigProps): RequestHandler;
-export declare const isValidEmail: (val: any) => boolean;
-export declare const getKeycloakToken: (adminUrl: string, realm: string, grantType: string, clientId: string, clientSecret: string) => Promise<{
+export declare function isValidEmail(val: any): boolean;
+export declare function getKeycloakToken(adminUrl: string, realm: string, grantType: string, clientId: string, clientSecret: string): Promise<{
     headers: {
         Authorization: string;
     };
 }>;
-export declare const getKeycloakUsers: (adminUrl: string, realm: string, config: Record<string, any>, params?: Record<string, string>) => Promise<Array<Record<string, any>>>;
-export declare const handleCreateKeycloakUser: (adminUrl: string, realm: string, body: KeycloakUserPayloadCreateProps, config: Record<string, any>) => Promise<void>;
-export declare const handleUpdateKeycloakUser: (adminUrl: string, realm: string, body: KeycloakUserPayloadUpdateProps, config: Record<string, any>) => Promise<void>;
+export declare function handleCreateKeycloakUser(body: KeycloakUserPayloadCreateProps, adminUrl: string, realm: string, grantType: string, clientId: string, clientSecret: string): Promise<string>;
+export declare function handleUpdateKeycloakUser(body: KeycloakUserPayloadUpdateProps, adminUrl: string, realm: string, grantType: string, clientId: string, clientSecret: string): Promise<void>;
