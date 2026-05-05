@@ -108,7 +108,7 @@ async function handleCreateKeycloakUser(body, adminUrl, realm, grantType, client
         throw new Error(`username:${body.username} ya se encuentra registrado`);
     }
     const userByEmail = await getKeycloakUsers(adminUrl, realm, keycloakConfig, {
-        email: body.username,
+        email: body.email,
     });
     if (userByEmail.length) {
         throw new Error(`email:${body.email} ya se encuentra registrado`);
