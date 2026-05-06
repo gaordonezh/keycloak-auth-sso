@@ -22,5 +22,7 @@ Expone:
 - types:
   - KeycloakUserPayloadCreateProps
   - KeycloakUserPayloadUpdateProps
+  - KeycloakTokenParamsProps
   - KeycloakConfigProps
+  - KeycloakFrontendAccessConfigProps
   - Express > Request > ssouser

@@ -32,12 +32,24 @@ declare global {
   }
 }
 
+export interface KeycloakTokenParamsProps {
+  adminUrl: string;
+  realm: string;
+  grantType: string;
+  clientId: string;
+  clientSecret: string;
+}
+
+export interface KeycloakFrontendAccessConfigProps {
+  clientId: string;
+  access: string;
+}
+
 export interface KeycloakConfigProps {
   jwksUri: string;
   issuer: string;
   clientId: string;
-  frontendClientId: string;
-  frontendAccessName: string;
+  accessConfig: Array<KeycloakFrontendAccessConfigProps>;
 }
 
 export interface KeycloakUserPayloadCreateProps {
@@ -45,16 +57,22 @@ export interface KeycloakUserPayloadCreateProps {
   name: string;
   lastName: string;
   email: string;
+  password?: string;
   isActive?: boolean;
 }
 
-export interface KeycloakUserPayloadUpdateProps extends KeycloakUserPayloadCreateProps {}
+export interface KeycloakUserPayloadUpdateProps extends Omit<
+  KeycloakUserPayloadCreateProps,
+  "password"
+> {}
 
 export function ssoAuthenticateMiddleware(
   config: KeycloakConfigProps,
 ): RequestHandler {
+  const { accessConfig, clientId, issuer, jwksUri } = config;
+
   const client = jwksClient({
-    jwksUri: config.jwksUri,
+    jwksUri,
     cache: true,
     rateLimit: true,
   });
@@ -86,8 +104,8 @@ export function ssoAuthenticateMiddleware(
       token,
       getKey,
       {
-        issuer: config.issuer,
-        audience: config.clientId,
+        issuer,
+        audience: clientId,
         algorithms: ["RS256"],
       },
       (err, decoded: any) => {
@@ -95,15 +113,19 @@ export function ssoAuthenticateMiddleware(
           return res.status(401).json({ error: "INVALID TOKEN" });
         }
 
-        if (decoded?.azp !== config.frontendClientId) {
+        const currentClientAccess = accessConfig
+          .map((item) => item.clientId)
+          .includes(decoded?.azp);
+
+        if (!currentClientAccess) {
           return res.status(403).json({ error: "FORBIDDEN" });
         }
 
-        const hasPermission = decoded.resource_access?.[
-          config.frontendClientId
-        ]?.roles?.includes(config.frontendAccessName);
+        const resourcePermission = accessConfig.some(({ clientId, access }) => {
+          return decoded.resource_access[clientId]?.roles?.includes(access);
+        });
 
-        if (!hasPermission) {
+        if (!resourcePermission) {
           return res.status(403).json({ error: "FORBIDDEN." });
         }
 
@@ -120,13 +142,13 @@ export function isValidEmail(val: any) {
   return emailRegex.test(val);
 }
 
-export async function getKeycloakToken(
-  adminUrl: string,
-  realm: string,
-  grantType: string,
-  clientId: string,
-  clientSecret: string,
-) {
+export async function getKeycloakToken({
+  adminUrl,
+  clientId,
+  clientSecret,
+  grantType,
+  realm,
+}: KeycloakTokenParamsProps) {
   const params = new URLSearchParams();
   params.append("grant_type", grantType);
   params.append("client_id", clientId);
@@ -152,11 +174,11 @@ export async function getKeycloakToken(
 const getKeycloakUsers = async (
   adminUrl: string,
   realm: string,
-  config: Record<string, any>,
+  headersConfig: Record<string, any>,
   params?: Record<string, string>,
 ): Promise<Array<Record<string, any>>> => {
   const res = await axios.get(`${adminUrl}/admin/realms/${realm}/users`, {
-    ...config,
+    ...headersConfig,
     params,
   });
   // first: 0, max: 10000
@@ -172,37 +194,33 @@ const validateUserPayload = (record: Record<string, any>) => {
   ];
 
   const isValid = arr.every(Boolean);
-  if (!isValid) throw new Error("SOME FIELD IS WRONG");
+  if (!isValid) throw new Error("Some field is incorrect");
 };
 
 export async function handleCreateKeycloakUser(
   body: KeycloakUserPayloadCreateProps,
-  adminUrl: string,
-  realm: string,
-  grantType: string,
-  clientId: string,
-  clientSecret: string,
+  tokenConfig: KeycloakTokenParamsProps,
 ): Promise<string> {
   validateUserPayload(body);
 
-  const keycloakConfig = await getKeycloakToken(
-    adminUrl,
-    realm,
-    grantType,
-    clientId,
-    clientSecret,
-  );
+  const keycloakConfig = await getKeycloakToken(tokenConfig);
 
-  const finUsername = await getKeycloakUsers(adminUrl, realm, keycloakConfig, {
-    username: body.username,
-  });
+  const finUsername = await getKeycloakUsers(
+    tokenConfig.adminUrl,
+    tokenConfig.realm,
+    keycloakConfig,
+    { username: body.username },
+  );
   if (finUsername.length) {
     throw new Error(`username:${body.username} ya se encuentra registrado`);
   }
 
-  const userByEmail = await getKeycloakUsers(adminUrl, realm, keycloakConfig, {
-    email: body.email,
-  });
+  const userByEmail = await getKeycloakUsers(
+    tokenConfig.adminUrl,
+    tokenConfig.realm,
+    keycloakConfig,
+    { email: body.email },
+  );
   if (userByEmail.length) {
     throw new Error(`email:${body.email} ya se encuentra registrado`);
   }
@@ -223,7 +241,7 @@ export async function handleCreateKeycloakUser(
       {
         temporary: true,
         type: "password",
-        value: body.username,
+        value: body.password ?? body.username,
       },
     ],
   };
@@ -231,14 +249,14 @@ export async function handleCreateKeycloakUser(
   console.log("kc create:", obj);
 
   await axios.post(
-    `${adminUrl}/admin/realms/${realm}/users/`,
+    `${tokenConfig.adminUrl}/admin/realms/${tokenConfig.realm}/users/`,
     obj,
     keycloakConfig,
   );
 
   const userByUsername = await getKeycloakUsers(
-    adminUrl,
-    realm,
+    tokenConfig.adminUrl,
+    tokenConfig.realm,
     keycloakConfig,
     { username: body.username },
   );
@@ -256,24 +274,14 @@ export async function handleCreateKeycloakUser(
 
 export async function handleUpdateKeycloakUser(
   body: KeycloakUserPayloadUpdateProps,
-  adminUrl: string,
-  realm: string,
-  grantType: string,
-  clientId: string,
-  clientSecret: string,
+  tokenConfig: KeycloakTokenParamsProps,
 ) {
   validateUserPayload(body);
 
-  const keycloakConfig = await getKeycloakToken(
-    adminUrl,
-    realm,
-    grantType,
-    clientId,
-    clientSecret,
-  );
+  const keycloakConfig = await getKeycloakToken(tokenConfig);
   const userByUsername = await getKeycloakUsers(
-    adminUrl,
-    realm,
+    tokenConfig.adminUrl,
+    tokenConfig.realm,
     keycloakConfig,
     { username: body.username },
   );
@@ -295,7 +303,7 @@ export async function handleUpdateKeycloakUser(
   console.log("kc update:", obj);
 
   await axios.put(
-    `${adminUrl}/admin/realms/${realm}/users/${obj.id}`,
+    `${tokenConfig.adminUrl}/admin/realms/${tokenConfig.realm}/users/${obj.id}`,
     obj,
     keycloakConfig,
   );
