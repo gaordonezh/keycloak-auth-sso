@@ -29,28 +29,39 @@ declare global {
         }
     }
 }
+export interface KeycloakTokenParamsProps {
+    adminUrl: string;
+    realm: string;
+    grantType: string;
+    clientId: string;
+    clientSecret: string;
+}
+export interface KeycloakFrontendAccessConfigProps {
+    clientId: string;
+    access: string;
+}
 export interface KeycloakConfigProps {
     jwksUri: string;
     issuer: string;
     clientId: string;
-    frontendClientId: string;
-    frontendAccessName: string;
+    accessConfig: Array<KeycloakFrontendAccessConfigProps>;
 }
 export interface KeycloakUserPayloadCreateProps {
     username: string;
     name: string;
     lastName: string;
     email: string;
+    password?: string;
     isActive?: boolean;
 }
-export interface KeycloakUserPayloadUpdateProps extends KeycloakUserPayloadCreateProps {
+export interface KeycloakUserPayloadUpdateProps extends Omit<KeycloakUserPayloadCreateProps, "password"> {
 }
 export declare function ssoAuthenticateMiddleware(config: KeycloakConfigProps): RequestHandler;
 export declare function isValidEmail(val: any): boolean;
-export declare function getKeycloakToken(adminUrl: string, realm: string, grantType: string, clientId: string, clientSecret: string): Promise<{
+export declare function getKeycloakToken({ adminUrl, clientId, clientSecret, grantType, realm, }: KeycloakTokenParamsProps): Promise<{
     headers: {
         Authorization: string;
     };
 }>;
-export declare function handleCreateKeycloakUser(body: KeycloakUserPayloadCreateProps, adminUrl: string, realm: string, grantType: string, clientId: string, clientSecret: string): Promise<string>;
-export declare function handleUpdateKeycloakUser(body: KeycloakUserPayloadUpdateProps, adminUrl: string, realm: string, grantType: string, clientId: string, clientSecret: string): Promise<void>;
+export declare function handleCreateKeycloakUser(body: KeycloakUserPayloadCreateProps, tokenConfig: KeycloakTokenParamsProps): Promise<string>;
+export declare function handleUpdateKeycloakUser(body: KeycloakUserPayloadUpdateProps, tokenConfig: KeycloakTokenParamsProps): Promise<void>;

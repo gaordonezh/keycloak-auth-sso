@@ -12,8 +12,9 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const jwks_rsa_1 = __importDefault(require("jwks-rsa"));
 const axios_1 = __importDefault(require("axios"));
 function ssoAuthenticateMiddleware(config) {
+    const { accessConfig, clientId, issuer, jwksUri } = config;
     const client = (0, jwks_rsa_1.default)({
-        jwksUri: config.jwksUri,
+        jwksUri,
         cache: true,
         rateLimit: true,
     });
@@ -38,19 +39,24 @@ function ssoAuthenticateMiddleware(config) {
             return res.status(401).json({ error: "INVALID AUTH HEADER" });
         }
         jsonwebtoken_1.default.verify(token, getKey, {
-            issuer: config.issuer,
-            audience: config.clientId,
+            issuer,
+            audience: clientId,
             algorithms: ["RS256"],
         }, (err, decoded) => {
-            var _a, _b, _c;
             if (err) {
                 return res.status(401).json({ error: "INVALID TOKEN" });
             }
-            if ((decoded === null || decoded === void 0 ? void 0 : decoded.azp) !== config.frontendClientId) {
+            const currentClientAccess = accessConfig
+                .map((item) => item.clientId)
+                .includes(decoded === null || decoded === void 0 ? void 0 : decoded.azp);
+            if (!currentClientAccess) {
                 return res.status(403).json({ error: "FORBIDDEN" });
             }
-            const hasPermission = (_c = (_b = (_a = decoded.resource_access) === null || _a === void 0 ? void 0 : _a[config.frontendClientId]) === null || _b === void 0 ? void 0 : _b.roles) === null || _c === void 0 ? void 0 : _c.includes(config.frontendAccessName);
-            if (!hasPermission) {
+            const resourcePermission = accessConfig.some(({ clientId, access }) => {
+                var _a, _b;
+                return (_b = (_a = decoded.resource_access[clientId]) === null || _a === void 0 ? void 0 : _a.roles) === null || _b === void 0 ? void 0 : _b.includes(access);
+            });
+            if (!resourcePermission) {
                 return res.status(403).json({ error: "FORBIDDEN." });
             }
             req.ssouser = decoded;
@@ -64,7 +70,7 @@ function isValidEmail(val) {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     return emailRegex.test(val);
 }
-async function getKeycloakToken(adminUrl, realm, grantType, clientId, clientSecret) {
+async function getKeycloakToken({ adminUrl, clientId, clientSecret, grantType, realm, }) {
     const params = new URLSearchParams();
     params.append("grant_type", grantType);
     params.append("client_id", clientId);
@@ -80,9 +86,9 @@ async function getKeycloakToken(adminUrl, realm, grantType, clientId, clientSecr
         },
     };
 }
-const getKeycloakUsers = async (adminUrl, realm, config, params) => {
+const getKeycloakUsers = async (adminUrl, realm, headersConfig, params) => {
     const res = await axios_1.default.get(`${adminUrl}/admin/realms/${realm}/users`, {
-        ...config,
+        ...headersConfig,
         params,
     });
     // first: 0, max: 10000
@@ -97,20 +103,17 @@ const validateUserPayload = (record) => {
     ];
     const isValid = arr.every(Boolean);
     if (!isValid)
-        throw new Error("SOME FIELD IS WRONG");
+        throw new Error("Some field is incorrect");
 };
-async function handleCreateKeycloakUser(body, adminUrl, realm, grantType, clientId, clientSecret) {
+async function handleCreateKeycloakUser(body, tokenConfig) {
+    var _a;
     validateUserPayload(body);
-    const keycloakConfig = await getKeycloakToken(adminUrl, realm, grantType, clientId, clientSecret);
-    const finUsername = await getKeycloakUsers(adminUrl, realm, keycloakConfig, {
-        username: body.username,
-    });
+    const keycloakConfig = await getKeycloakToken(tokenConfig);
+    const finUsername = await getKeycloakUsers(tokenConfig.adminUrl, tokenConfig.realm, keycloakConfig, { username: body.username });
     if (finUsername.length) {
         throw new Error(`username:${body.username} ya se encuentra registrado`);
     }
-    const userByEmail = await getKeycloakUsers(adminUrl, realm, keycloakConfig, {
-        email: body.email,
-    });
+    const userByEmail = await getKeycloakUsers(tokenConfig.adminUrl, tokenConfig.realm, keycloakConfig, { email: body.email });
     if (userByEmail.length) {
         throw new Error(`email:${body.email} ya se encuentra registrado`);
     }
@@ -130,13 +133,13 @@ async function handleCreateKeycloakUser(body, adminUrl, realm, grantType, client
             {
                 temporary: true,
                 type: "password",
-                value: body.username,
+                value: (_a = body.password) !== null && _a !== void 0 ? _a : body.username,
             },
         ],
     };
     console.log("kc create:", obj);
-    await axios_1.default.post(`${adminUrl}/admin/realms/${realm}/users/`, obj, keycloakConfig);
-    const userByUsername = await getKeycloakUsers(adminUrl, realm, keycloakConfig, { username: body.username });
+    await axios_1.default.post(`${tokenConfig.adminUrl}/admin/realms/${tokenConfig.realm}/users/`, obj, keycloakConfig);
+    const userByUsername = await getKeycloakUsers(tokenConfig.adminUrl, tokenConfig.realm, keycloakConfig, { username: body.username });
     if (!userByUsername.length) {
         throw new Error(`No se encontró el username:${body.username} creado en keycloak.`);
     }
@@ -145,11 +148,11 @@ async function handleCreateKeycloakUser(body, adminUrl, realm, grantType, client
         throw new Error("No se encontró el id creado");
     return ssoid;
 }
-async function handleUpdateKeycloakUser(body, adminUrl, realm, grantType, clientId, clientSecret) {
+async function handleUpdateKeycloakUser(body, tokenConfig) {
     var _a;
     validateUserPayload(body);
-    const keycloakConfig = await getKeycloakToken(adminUrl, realm, grantType, clientId, clientSecret);
-    const userByUsername = await getKeycloakUsers(adminUrl, realm, keycloakConfig, { username: body.username });
+    const keycloakConfig = await getKeycloakToken(tokenConfig);
+    const userByUsername = await getKeycloakUsers(tokenConfig.adminUrl, tokenConfig.realm, keycloakConfig, { username: body.username });
     if (!userByUsername.length) {
         throw new Error(`No se encontró el username:${body.username} en keycloak.`);
     }
@@ -164,5 +167,5 @@ async function handleUpdateKeycloakUser(body, adminUrl, realm, grantType, client
         enabled: body.isActive,
     };
     console.log("kc update:", obj);
-    await axios_1.default.put(`${adminUrl}/admin/realms/${realm}/users/${obj.id}`, obj, keycloakConfig);
+    await axios_1.default.put(`${tokenConfig.adminUrl}/admin/realms/${tokenConfig.realm}/users/${obj.id}`, obj, keycloakConfig);
 }
