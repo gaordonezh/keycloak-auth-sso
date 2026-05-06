@@ -104,17 +104,15 @@ export function ssoAuthenticateMiddleware(config: KeycloakConfigProps): RequestH
           return res.status(401).json({ error: "INVALID_TOKEN" });
         }
 
-        const currentClientAccess = config.accessConfig.map((item) => item.clientId).includes(decoded?.azp);
+        const frontOriginClientId = decoded.azp;
 
-        if (!currentClientAccess) {
+        const record = config.accessConfig.find((r) => r.clientId === frontOriginClientId);
+        if (!record) {
           return res.status(403).json({ error: "FORBIDDEN" });
         }
 
-        const resourcePermission = config.accessConfig.some((record) => {
-          return decoded.resource_access[record.clientId]?.roles?.includes(record.access);
-        });
-
-        if (!resourcePermission) {
+        const roles = decoded.resource_access[frontOriginClientId]?.roles ?? [];
+        if (!roles.includes(record.access)) {
           return res.status(403).json({ error: "FORBIDDEN_" });
         }
 

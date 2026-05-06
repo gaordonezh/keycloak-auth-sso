@@ -39,18 +39,17 @@ function ssoAuthenticateMiddleware(config) {
             audience: config.clientId,
             algorithms: ["RS256"],
         }, (err, decoded) => {
+            var _a, _b;
             if (err) {
                 return res.status(401).json({ error: "INVALID_TOKEN" });
             }
-            const currentClientAccess = config.accessConfig.map((item) => item.clientId).includes(decoded === null || decoded === void 0 ? void 0 : decoded.azp);
-            if (!currentClientAccess) {
+            const frontOriginClientId = decoded.azp;
+            const record = config.accessConfig.find((r) => r.clientId === frontOriginClientId);
+            if (!record) {
                 return res.status(403).json({ error: "FORBIDDEN" });
             }
-            const resourcePermission = config.accessConfig.some((record) => {
-                var _a, _b;
-                return (_b = (_a = decoded.resource_access[record.clientId]) === null || _a === void 0 ? void 0 : _a.roles) === null || _b === void 0 ? void 0 : _b.includes(record.access);
-            });
-            if (!resourcePermission) {
+            const roles = (_b = (_a = decoded.resource_access[frontOriginClientId]) === null || _a === void 0 ? void 0 : _a.roles) !== null && _b !== void 0 ? _b : [];
+            if (!roles.includes(record.access)) {
                 return res.status(403).json({ error: "FORBIDDEN_" });
             }
             req.ssouser = decoded;
