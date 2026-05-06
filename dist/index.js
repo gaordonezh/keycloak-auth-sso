@@ -59,9 +59,8 @@ function ssoAuthenticateMiddleware(config) {
     };
 }
 function isValidEmail(val) {
-    if (typeof val !== "string") {
+    if (typeof val !== "string")
         return false;
-    }
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     return emailRegex.test(val);
 }
