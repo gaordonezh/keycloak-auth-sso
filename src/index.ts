@@ -61,26 +61,13 @@ export interface KeycloakUserPayloadCreateProps {
   isActive?: boolean;
 }
 
-export interface KeycloakUserPayloadUpdateProps extends Omit<
-  KeycloakUserPayloadCreateProps,
-  "password"
-> {}
+export interface KeycloakUserPayloadUpdateProps extends Omit<KeycloakUserPayloadCreateProps, "password"> {}
 
-export function ssoAuthenticateMiddleware(
-  config: KeycloakConfigProps,
-): RequestHandler {
-  const { accessConfig, clientId, issuer, jwksUri } = config;
-
-  const client = jwksClient({
-    jwksUri,
-    cache: true,
-    rateLimit: true,
-  });
+export function ssoAuthenticateMiddleware(config: KeycloakConfigProps): RequestHandler {
+  const client = jwksClient({ jwksUri: config.jwksUri, cache: true, rateLimit: true });
 
   const getKey = (header: JwtHeader, callback: any) => {
-    if (!header.kid) {
-      return callback(new Error("No KID in token header"));
-    }
+    if (!header.kid) return callback(new Error("No KID in token header"));
 
     client.getSigningKey(header.kid, (err, key) => {
       if (err) return callback(err);
@@ -92,41 +79,39 @@ export function ssoAuthenticateMiddleware(
   return (req: Request, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-      return res.status(401).json({ error: "TOKEN WASN'T PROVIDED" });
+      return res.status(401).json({ error: "TOKEN_WAS_NOT_PROVIDED" });
     }
 
     const [scheme, token] = authHeader.split(" ");
     if (scheme !== "Bearer" || !token) {
-      return res.status(401).json({ error: "INVALID AUTH HEADER" });
+      return res.status(401).json({ error: "INVALID_AUTH_HEADER" });
     }
 
     jwt.verify(
       token,
       getKey,
       {
-        issuer,
-        audience: clientId,
+        issuer: config.issuer,
+        audience: config.clientId,
         algorithms: ["RS256"],
       },
       (err, decoded: any) => {
         if (err) {
-          return res.status(401).json({ error: "INVALID TOKEN" });
+          return res.status(401).json({ error: "INVALID_TOKEN" });
         }
 
-        const currentClientAccess = accessConfig
-          .map((item) => item.clientId)
-          .includes(decoded?.azp);
+        const currentClientAccess = config.accessConfig.map((item) => item.clientId).includes(decoded?.azp);
 
         if (!currentClientAccess) {
           return res.status(403).json({ error: "FORBIDDEN" });
         }
 
-        const resourcePermission = accessConfig.some(({ clientId, access }) => {
-          return decoded.resource_access[clientId]?.roles?.includes(access);
+        const resourcePermission = config.accessConfig.some((record) => {
+          return decoded.resource_access[record.clientId]?.roles?.includes(record.access);
         });
 
         if (!resourcePermission) {
-          return res.status(403).json({ error: "FORBIDDEN." });
+          return res.status(403).json({ error: "FORBIDDEN_" });
         }
 
         req.ssouser = decoded;
@@ -142,33 +127,19 @@ export function isValidEmail(val: any) {
   return emailRegex.test(val);
 }
 
-export async function getKeycloakToken({
-  adminUrl,
-  clientId,
-  clientSecret,
-  grantType,
-  realm,
-}: KeycloakTokenParamsProps) {
+export async function getKeycloakToken(parameters: KeycloakTokenParamsProps) {
   const params = new URLSearchParams();
-  params.append("grant_type", grantType);
-  params.append("client_id", clientId);
-  params.append("client_secret", clientSecret);
+  params.append("grant_type", parameters.grantType);
+  params.append("client_id", parameters.clientId);
+  params.append("client_secret", parameters.clientSecret);
 
   const { data: resToken } = await axios.post(
-    `${adminUrl}/realms/${realm}/protocol/openid-connect/token`,
+    `${parameters.adminUrl}/realms/${parameters.realm}/protocol/openid-connect/token`,
     params,
-    {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    },
+    { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
   );
 
-  return {
-    headers: {
-      Authorization: `Bearer ${resToken.access_token}`,
-    },
-  };
+  return { headers: { Authorization: `Bearer ${resToken.access_token}` } };
 }
 
 const getKeycloakUsers = async (
@@ -186,12 +157,7 @@ const getKeycloakUsers = async (
 };
 
 const validateUserPayload = (record: Record<string, any>) => {
-  const arr = [
-    record.username,
-    record.name,
-    record.lastName,
-    isValidEmail(record.email),
-  ];
+  const arr = [record.username, record.name, record.lastName, isValidEmail(record.email)];
 
   const isValid = arr.every(Boolean);
   if (!isValid) throw new Error("Some field is incorrect");
@@ -205,22 +171,16 @@ export async function handleCreateKeycloakUser(
 
   const keycloakConfig = await getKeycloakToken(tokenConfig);
 
-  const finUsername = await getKeycloakUsers(
-    tokenConfig.adminUrl,
-    tokenConfig.realm,
-    keycloakConfig,
-    { username: body.username },
-  );
+  const finUsername = await getKeycloakUsers(tokenConfig.adminUrl, tokenConfig.realm, keycloakConfig, {
+    username: body.username,
+  });
   if (finUsername.length) {
     throw new Error(`username:${body.username} ya se encuentra registrado`);
   }
 
-  const userByEmail = await getKeycloakUsers(
-    tokenConfig.adminUrl,
-    tokenConfig.realm,
-    keycloakConfig,
-    { email: body.email },
-  );
+  const userByEmail = await getKeycloakUsers(tokenConfig.adminUrl, tokenConfig.realm, keycloakConfig, {
+    email: body.email,
+  });
   if (userByEmail.length) {
     throw new Error(`email:${body.email} ya se encuentra registrado`);
   }
@@ -231,9 +191,7 @@ export async function handleCreateKeycloakUser(
     username: body.username,
     firstName: body.name || "-",
     lastName: body.lastName || "-",
-    email: isValidEmail(body.email)
-      ? body.email.trim()
-      : `${body.email || "temp"}_mail@mail.com`,
+    email: isValidEmail(body.email) ? body.email.trim() : `${body.email || "temp"}_mail@mail.com`,
     groups: [],
     attributes: {},
     enabled: false,
@@ -248,22 +206,13 @@ export async function handleCreateKeycloakUser(
 
   console.log("kc create:", obj);
 
-  await axios.post(
-    `${tokenConfig.adminUrl}/admin/realms/${tokenConfig.realm}/users/`,
-    obj,
-    keycloakConfig,
-  );
+  await axios.post(`${tokenConfig.adminUrl}/admin/realms/${tokenConfig.realm}/users/`, obj, keycloakConfig);
 
-  const userByUsername = await getKeycloakUsers(
-    tokenConfig.adminUrl,
-    tokenConfig.realm,
-    keycloakConfig,
-    { username: body.username },
-  );
+  const userByUsername = await getKeycloakUsers(tokenConfig.adminUrl, tokenConfig.realm, keycloakConfig, {
+    username: body.username,
+  });
   if (!userByUsername.length) {
-    throw new Error(
-      `No se encontró el username:${body.username} creado en keycloak.`,
-    );
+    throw new Error(`No se encontró el username:${body.username} creado en keycloak.`);
   }
 
   const ssoid = userByUsername[0].id;
@@ -279,12 +228,9 @@ export async function handleUpdateKeycloakUser(
   validateUserPayload(body);
 
   const keycloakConfig = await getKeycloakToken(tokenConfig);
-  const userByUsername = await getKeycloakUsers(
-    tokenConfig.adminUrl,
-    tokenConfig.realm,
-    keycloakConfig,
-    { username: body.username },
-  );
+  const userByUsername = await getKeycloakUsers(tokenConfig.adminUrl, tokenConfig.realm, keycloakConfig, {
+    username: body.username,
+  });
   if (!userByUsername.length) {
     throw new Error(`No se encontró el username:${body.username} en keycloak.`);
   }
@@ -302,9 +248,5 @@ export async function handleUpdateKeycloakUser(
 
   console.log("kc update:", obj);
 
-  await axios.put(
-    `${tokenConfig.adminUrl}/admin/realms/${tokenConfig.realm}/users/${obj.id}`,
-    obj,
-    keycloakConfig,
-  );
+  await axios.put(`${tokenConfig.adminUrl}/admin/realms/${tokenConfig.realm}/users/${obj.id}`, obj, keycloakConfig);
 }
