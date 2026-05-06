@@ -58,7 +58,7 @@ export interface KeycloakUserPayloadUpdateProps extends Omit<KeycloakUserPayload
 }
 export declare function ssoAuthenticateMiddleware(config: KeycloakConfigProps): RequestHandler;
 export declare function isValidEmail(val: any): boolean;
-export declare function getKeycloakToken({ adminUrl, clientId, clientSecret, grantType, realm, }: KeycloakTokenParamsProps): Promise<{
+export declare function getKeycloakToken(parameters: KeycloakTokenParamsProps): Promise<{
     headers: {
         Authorization: string;
     };

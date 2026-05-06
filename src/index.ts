@@ -67,10 +67,14 @@ export function ssoAuthenticateMiddleware(config: KeycloakConfigProps): RequestH
   const client = jwksClient({ jwksUri: config.jwksUri, cache: true, rateLimit: true });
 
   const getKey = (header: JwtHeader, callback: any) => {
-    if (!header.kid) return callback(new Error("No KID in token header"));
+    if (!header.kid) {
+      return callback(new Error("No KID in token header"));
+    }
 
     client.getSigningKey(header.kid, (err, key) => {
-      if (err) return callback(err);
+      if (err) {
+        return callback(err);
+      }
       const signingKey = key?.getPublicKey();
       callback(null, signingKey);
     });
@@ -122,7 +126,9 @@ export function ssoAuthenticateMiddleware(config: KeycloakConfigProps): RequestH
 }
 
 export function isValidEmail(val: any) {
-  if (typeof val !== "string") return false;
+  if (typeof val !== "string") {
+    return false;
+  }
   const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
   return emailRegex.test(val);
 }
@@ -160,7 +166,9 @@ const validateUserPayload = (record: Record<string, any>) => {
   const arr = [record.username, record.name, record.lastName, isValidEmail(record.email)];
 
   const isValid = arr.every(Boolean);
-  if (!isValid) throw new Error("Some field is incorrect");
+  if (!isValid) {
+    throw new Error("Some field is incorrect");
+  }
 };
 
 export async function handleCreateKeycloakUser(
@@ -216,7 +224,9 @@ export async function handleCreateKeycloakUser(
   }
 
   const ssoid = userByUsername[0].id;
-  if (!ssoid) throw new Error("No se encontró el id creado");
+  if (!ssoid) {
+    throw new Error("No se encontró el id creado");
+  }
 
   return ssoid;
 }
@@ -236,7 +246,9 @@ export async function handleUpdateKeycloakUser(
   }
 
   const ssoid = userByUsername[0]?.id;
-  if (!ssoid) throw new Error(`No se encontró el id del usuario`);
+  if (!ssoid) {
+    throw new Error(`No se encontró el id del usuario`);
+  }
 
   const obj = {
     id: ssoid,
